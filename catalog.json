@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-09-06T12:00:00Z",
+  "banner": {
+    "title": "Trip.com 獨家優惠特輯",
+    "subtitle": "精選美食餐券、住宿與熱門景點門票",
+    "imageUrl": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80",
+    "actionUrl": "https://tw.trip.com/"
+  },
+  "categories": ["全部", "餐飲美食", "旅遊住宿", "休閒娛樂"],
+  "items": [
+    {
+      "id": "deal-001",
+      "brand": "王品集團",
+      "category": "餐飲美食",
+      "title": "王品集團多品牌 NT$500 即享券",
+      "description": "全台陶板屋、西堤、夏慕尼等連鎖門市通用，平假日皆可全額抵用，結帳直接出示條碼。",
+      "priceNote": "約 NT$ 465 起",
+      "originalPrice": 500,
+      "badge": "熱門推薦",
+      "imageUrl": "https://images.unsplash.com/photo-1544025162-d76694265947?w=500&q=80",
+      "tripUrl": "https://tw.trip.com/"
+    },
+    {
+      "id": "deal-002",
+      "brand": "星巴克",
+      "category": "餐飲美食",
+      "title": "星巴克 150 元星享飲料券",
+      "description": "現場可兌換任一大杯指定飲品，超值回饋，無使用期限限制，可補差額升級。",
+      "priceNote": "約 NT$ 135 起",
+      "originalPrice": 150,
+      "badge": "9 折優惠",
+      "imageUrl": "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500&q=80",
+      "tripUrl": "https://tw.trip.com/"
+    }
+  ]
+}

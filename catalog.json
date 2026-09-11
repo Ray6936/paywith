@@ -1,12 +1,12 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-09-06T08:17:13Z",
+  "updatedAt": "2026-09-11T15:38:59.356Z",
   "banner": {
-    "id": "b1",
+    "id": "b2",
     "title": "",
     "subtitle": "",
-    "imageUrl": "https://dimg04.tripcdn.com/images/1zp4j12000tr6e0etA9F8.png",
-    "actionUrl": "https://tw.trip.com/sale/w/42134/family-campaign.html?locale=zh-TW&promo_referer=97_50093_14&promo_referer=3952_null_1&Allianceid=10449258&SID=330437353&trip_sub1=&trip_sub3=P19701236"
+    "imageUrl": "https://dimg04.tripcdn.com/images/1zp1v12000tpx12mt40C8.png",
+    "actionUrl": "https://tw.trip.com/sale/w/4497/mega-sale.html?locale=zh_tw&promo_referer=3952_47076_2&Allianceid=10449258&SID=330437353&trip_sub1=&trip_sub3=P19701467"
   },
   "categories": [
     "全部",
@@ -605,13 +605,6 @@
     }
   ],
   "banners": [
-    {
-      "id": "b1",
-      "title": "",
-      "subtitle": "",
-      "imageUrl": "https://dimg04.tripcdn.com/images/1zp4j12000tr6e0etA9F8.png",
-      "actionUrl": "https://tw.trip.com/sale/w/42134/family-campaign.html?locale=zh-TW&promo_referer=97_50093_14&promo_referer=3952_null_1&Allianceid=10449258&SID=330437353&trip_sub1=&trip_sub3=P19701236"
-    },
     {
       "id": "b2",
       "title": "",

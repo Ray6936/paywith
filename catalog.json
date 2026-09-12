@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-09-11T15:38:59.356Z",
+  "updatedAt": "2026-09-12T07:18:15.344Z",
   "banner": {
     "id": "b2",
     "title": "",
@@ -611,6 +611,13 @@
       "subtitle": "",
       "imageUrl": "https://dimg04.tripcdn.com/images/1zp1v12000tpx12mt40C8.png",
       "actionUrl": "https://tw.trip.com/sale/w/4497/mega-sale.html?locale=zh_tw&promo_referer=3952_47076_2&Allianceid=10449258&SID=330437353&trip_sub1=&trip_sub3=P19701467"
+    },
+    {
+      "id": "banner_1789197461730",
+      "title": "",
+      "subtitle": "",
+      "imageUrl": "https://dimg04.tripcdn.com/images/1zp1u12000sz3w5rt4E58.png",
+      "actionUrl": "https://tw.trip.com/sale/w/19280/gochina.html?locale=zh-TW&promo_referer=3952_39957_13&Allianceid=10449258&SID=330437353&trip_sub1=&trip_sub3=P19787476"
     }
   ]
 }

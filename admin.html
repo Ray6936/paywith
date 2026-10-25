@@ -6,14 +6,884 @@
   <title>PayWith 商城後台管理系統</title>
   <link rel="icon" href="https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=64&q=80" type="image/png">
   <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com">
+    // ==========================================
+    // Remote Push Notification System Logic
+    // ==========================================
+    const NOTIF_FILE_PATH = 'notifications.json';
+    let notifData = {
+      version: 1,
+      last_updated: '',
+      notifications: []
+    };
+    let notifFileSha = null;
+    let currentCmsTab = 'mall';
+
+    function switchCmsTab(tab) {
+      currentCmsTab = tab;
+      const navMall = document.getElementById('navTabMall');
+      const navPush = document.getElementById('navTabPush');
+      const viewMall = document.getElementById('tabMallView');
+      const viewPush = document.getElementById('tabPushView');
+
+      if (tab === 'mall') {
+        navMall.className = 'px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition';
+        navPush.className = 'px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+        viewMall.classList.remove('hidden');
+        viewPush.classList.add('hidden');
+      } else {
+        navPush.className = 'px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition';
+        navMall.className = 'px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+        viewMall.classList.add('hidden');
+        viewPush.classList.remove('hidden');
+        loadNotificationsFromGitHub();
+      }
+      refreshIcons();
+    }
+
+    function insertTitleEmoji(emoji) {
+      const input = document.getElementById('notifTitleInput');
+      if (input) {
+        input.value = emoji + input.value;
+        input.focus();
+      }
+    }
+
+    function handleTargetChange() {
+      const select = document.getElementById('notifTargetSelect');
+      const wrapper = document.getElementById('targetUrlWrapper');
+      if (select && wrapper) {
+        if (select.value === 'external_url') {
+          wrapper.classList.remove('hidden');
+        } else {
+          wrapper.classList.add('hidden');
+        }
+      }
+    }
+
+    async function loadNotificationsFromGitHub() {
+      try {
+        const token = getToken();
+        let res;
+        if (token) {
+          res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${NOTIF_FILE_PATH}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          });
+        }
+        
+        if (!res || !res.ok) {
+          // Public raw fallback
+          res = await fetch(`https://ray6936.github.io/paywith/${NOTIF_FILE_PATH}?t=${Date.now()}`);
+          if (!res.ok) {
+            notifData = { version: 1, last_updated: new Date().toISOString(), notifications: [] };
+            renderNotificationsTable();
+            return;
+          }
+          notifData = await res.json();
+          notifFileSha = null;
+        } else {
+          const data = await res.json();
+          notifFileSha = data.sha;
+          const jsonContent = base64ToUtf8(data.content);
+          notifData = JSON.parse(jsonContent);
+        }
+
+        if (!Array.isArray(notifData.notifications)) {
+          notifData.notifications = [];
+        }
+        renderNotificationsTable();
+      } catch (err) {
+        console.warn('載入推播通知清單：', err);
+        renderNotificationsTable();
+      }
+    }
+
+    function renderNotificationsTable() {
+      const tbody = document.getElementById('notifsTableBody');
+      const badge = document.getElementById('activeNotifBadge');
+      const statTotal = document.getElementById('statTotalNotifs');
+      const statActive = document.getElementById('statActiveNotifs');
+      
+      const list = notifData.notifications || [];
+      const activeCount = list.filter(n => n.is_active).length;
+
+      if (badge) badge.textContent = activeCount;
+      if (statTotal) statTotal.textContent = `${list.length} 則`;
+      if (statActive) statActive.textContent = `${activeCount} 則`;
+
+      if (!tbody) return;
+
+      if (list.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="py-12 text-center text-slate-400">
+              <i data-lucide="bell-off" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+              <p>目前尚無任何推播通知紀錄，快來發送第一則通知吧！</p>
+            </td>
+          </tr>
+        `;
+        refreshIcons();
+        return;
+      }
+
+      tbody.innerHTML = list.map((item, idx) => {
+        const isActive = item.is_active !== false;
+        const timeStr = item.created_at ? new Date(item.created_at).toLocaleString('zh-TW') : '剛剛';
+        const targetDesc = item.target_type === 'mall_tab' ? '🏬 即享券商城' :
+                           item.target_type === 'wallet_tab' ? '🎫 票券錢包' :
+                           item.target_type === 'external_url' ? `🌐 外部網址 (${item.target_url || ''})` : '🏠 開啟首頁';
+
+        const statusBadge = isActive 
+          ? '<span class="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>生效中</span>'
+          : '<span class="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-semibold">已停用</span>';
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition">
+            <td class="py-3.5 px-4">${statusBadge}</td>
+            <td class="py-3.5 px-4 max-w-md">
+              <div class="font-bold text-slate-900 text-sm mb-0.5">${escapeHtml(item.title)}</div>
+              <div class="text-xs text-slate-600 line-clamp-2 leading-relaxed">${escapeHtml(item.body)}</div>
+            </td>
+            <td class="py-3.5 px-4">
+              <span class="text-xs font-mono bg-slate-100 text-slate-700 px-2 py-1 rounded-lg">${targetDesc}</span>
+            </td>
+            <td class="py-3.5 px-4 text-xs text-slate-500 font-mono">${timeStr}</td>
+            <td class="py-3.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-2">
+                <button onclick="toggleNotifActive('${item.id}')" class="px-2.5 py-1 rounded-lg border text-xs font-semibold ${isActive ? 'border-amber-200 text-amber-700 hover:bg-amber-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'} transition">
+                  ${isActive ? '停用撤回' : '重新啟用'}
+                </button>
+                <button onclick="deleteNotif('${item.id}')" class="p-1 text-slate-400 hover:text-red-600 rounded transition" title="刪除此紀錄">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      refreshIcons();
+    }
+
+    async function handleSendBroadcast() {
+      const titleInput = document.getElementById('notifTitleInput');
+      const bodyInput = document.getElementById('notifBodyInput');
+      const targetSelect = document.getElementById('notifTargetSelect');
+      const targetUrlInput = document.getElementById('notifTargetUrl');
+      const prioritySelect = document.getElementById('notifPrioritySelect');
+      const sendBtn = document.getElementById('sendBroadcastBtn');
+
+      const title = (titleInput.value || '').trim();
+      const body = (bodyInput.value || '').trim();
+      const targetType = targetSelect.value || 'mall_tab';
+      const targetUrl = (targetUrlInput.value || '').trim();
+      const priority = prioritySelect.value || 'high';
+
+      if (!title) {
+        showToast('請填寫通知標題！', 'error');
+        titleInput.focus();
+        return;
+      }
+      if (!body) {
+        showToast('請填寫通知內文！', 'error');
+        bodyInput.focus();
+        return;
+      }
+      if (targetType === 'external_url' && !targetUrl) {
+        showToast('請輸入指定跳轉的外部網址！', 'error');
+        targetUrlInput.focus();
+        return;
+      }
+
+      const token = getToken();
+      if (!token) {
+        showToast('請先登入具備 repo 讀寫權限的 GitHub Token 才能發送推播！', 'error');
+        return;
+      }
+
+      if (!confirm(`確定要向所有使用者的手機發送以下推播嗎？\n\n🔔 標題：${title}\n📝 內容：${body}`)) {
+        return;
+      }
+
+      try {
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>正在廣播推播至 GitHub...</span>';
+        refreshIcons();
+
+        const newNotif = {
+          id: 'push_' + Date.now(),
+          title: title,
+          body: body,
+          target_type: targetType,
+          target_url: targetUrl,
+          priority: priority,
+          created_at: new Date().toISOString(),
+          is_active: true
+        };
+
+        if (!Array.isArray(notifData.notifications)) {
+          notifData.notifications = [];
+        }
+        notifData.notifications.unshift(newNotif);
+        notifData.last_updated = new Date().toISOString();
+
+        await saveNotificationsToGitHub(`📢 廣播推播: ${title}`);
+
+        // Reset form
+        titleInput.value = '';
+        bodyInput.value = '';
+        if (targetUrlInput) targetUrlInput.value = '';
+
+        showToast('🎉 推播通知已成功發布！使用者的手機將在連線時跳出懸浮通知！', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast(`發布失敗：${err.message}`, 'error');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i><span>立即廣播發送至所有手機</span>';
+        refreshIcons();
+      }
+    }
+
+    async function toggleNotifActive(id) {
+      const item = (notifData.notifications || []).find(n => n.id === id);
+      if (!item) return;
+      item.is_active = !item.is_active;
+      showToast(item.is_active ? '已重新啟用該通知' : '已停用撤回該通知', 'info');
+      renderNotificationsTable();
+      await saveNotificationsToGitHub(`更新推播狀態: ${item.title} (${item.is_active ? '啟用' : '停用'})`);
+    }
+
+    async function deleteNotif(id) {
+      if (!confirm('確定要永久刪除此推播紀錄嗎？')) return;
+      notifData.notifications = (notifData.notifications || []).filter(n => n.id !== id);
+      renderNotificationsTable();
+      await saveNotificationsToGitHub(`刪除推播紀錄: ${id}`);
+      showToast('已刪除推播紀錄', 'info');
+    }
+
+    async function saveNotificationsToGitHub(commitMsg) {
+      const token = getToken();
+      if (!token) throw new Error('未登入 Token');
+
+      const jsonStr = JSON.stringify(notifData, null, 2);
+      const base64Content = utf8ToBase64(jsonStr);
+
+      const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${NOTIF_FILE_PATH}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: commitMsg,
+          content: base64Content,
+          sha: notifFileSha
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || `HTTP ${res.status}`);
+      }
+
+      const resData = await res.json();
+      notifFileSha = resData.content.sha;
+      renderNotificationsTable();
+    }
+
+  </script>
   <!-- Lucide Icons -->
   <!-- Lucide Icons -->
-  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js">
+    // ==========================================
+    // Remote Push Notification System Logic
+    // ==========================================
+    const NOTIF_FILE_PATH = 'notifications.json';
+    let notifData = {
+      version: 1,
+      last_updated: '',
+      notifications: []
+    };
+    let notifFileSha = null;
+    let currentCmsTab = 'mall';
+
+    function switchCmsTab(tab) {
+      currentCmsTab = tab;
+      const navMall = document.getElementById('navTabMall');
+      const navPush = document.getElementById('navTabPush');
+      const viewMall = document.getElementById('tabMallView');
+      const viewPush = document.getElementById('tabPushView');
+
+      if (tab === 'mall') {
+        navMall.className = 'px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition';
+        navPush.className = 'px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+        viewMall.classList.remove('hidden');
+        viewPush.classList.add('hidden');
+      } else {
+        navPush.className = 'px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition';
+        navMall.className = 'px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+        viewMall.classList.add('hidden');
+        viewPush.classList.remove('hidden');
+        loadNotificationsFromGitHub();
+      }
+      refreshIcons();
+    }
+
+    function insertTitleEmoji(emoji) {
+      const input = document.getElementById('notifTitleInput');
+      if (input) {
+        input.value = emoji + input.value;
+        input.focus();
+      }
+    }
+
+    function handleTargetChange() {
+      const select = document.getElementById('notifTargetSelect');
+      const wrapper = document.getElementById('targetUrlWrapper');
+      if (select && wrapper) {
+        if (select.value === 'external_url') {
+          wrapper.classList.remove('hidden');
+        } else {
+          wrapper.classList.add('hidden');
+        }
+      }
+    }
+
+    async function loadNotificationsFromGitHub() {
+      try {
+        const token = getToken();
+        let res;
+        if (token) {
+          res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${NOTIF_FILE_PATH}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          });
+        }
+        
+        if (!res || !res.ok) {
+          // Public raw fallback
+          res = await fetch(`https://ray6936.github.io/paywith/${NOTIF_FILE_PATH}?t=${Date.now()}`);
+          if (!res.ok) {
+            notifData = { version: 1, last_updated: new Date().toISOString(), notifications: [] };
+            renderNotificationsTable();
+            return;
+          }
+          notifData = await res.json();
+          notifFileSha = null;
+        } else {
+          const data = await res.json();
+          notifFileSha = data.sha;
+          const jsonContent = base64ToUtf8(data.content);
+          notifData = JSON.parse(jsonContent);
+        }
+
+        if (!Array.isArray(notifData.notifications)) {
+          notifData.notifications = [];
+        }
+        renderNotificationsTable();
+      } catch (err) {
+        console.warn('載入推播通知清單：', err);
+        renderNotificationsTable();
+      }
+    }
+
+    function renderNotificationsTable() {
+      const tbody = document.getElementById('notifsTableBody');
+      const badge = document.getElementById('activeNotifBadge');
+      const statTotal = document.getElementById('statTotalNotifs');
+      const statActive = document.getElementById('statActiveNotifs');
+      
+      const list = notifData.notifications || [];
+      const activeCount = list.filter(n => n.is_active).length;
+
+      if (badge) badge.textContent = activeCount;
+      if (statTotal) statTotal.textContent = `${list.length} 則`;
+      if (statActive) statActive.textContent = `${activeCount} 則`;
+
+      if (!tbody) return;
+
+      if (list.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="py-12 text-center text-slate-400">
+              <i data-lucide="bell-off" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+              <p>目前尚無任何推播通知紀錄，快來發送第一則通知吧！</p>
+            </td>
+          </tr>
+        `;
+        refreshIcons();
+        return;
+      }
+
+      tbody.innerHTML = list.map((item, idx) => {
+        const isActive = item.is_active !== false;
+        const timeStr = item.created_at ? new Date(item.created_at).toLocaleString('zh-TW') : '剛剛';
+        const targetDesc = item.target_type === 'mall_tab' ? '🏬 即享券商城' :
+                           item.target_type === 'wallet_tab' ? '🎫 票券錢包' :
+                           item.target_type === 'external_url' ? `🌐 外部網址 (${item.target_url || ''})` : '🏠 開啟首頁';
+
+        const statusBadge = isActive 
+          ? '<span class="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>生效中</span>'
+          : '<span class="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-semibold">已停用</span>';
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition">
+            <td class="py-3.5 px-4">${statusBadge}</td>
+            <td class="py-3.5 px-4 max-w-md">
+              <div class="font-bold text-slate-900 text-sm mb-0.5">${escapeHtml(item.title)}</div>
+              <div class="text-xs text-slate-600 line-clamp-2 leading-relaxed">${escapeHtml(item.body)}</div>
+            </td>
+            <td class="py-3.5 px-4">
+              <span class="text-xs font-mono bg-slate-100 text-slate-700 px-2 py-1 rounded-lg">${targetDesc}</span>
+            </td>
+            <td class="py-3.5 px-4 text-xs text-slate-500 font-mono">${timeStr}</td>
+            <td class="py-3.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-2">
+                <button onclick="toggleNotifActive('${item.id}')" class="px-2.5 py-1 rounded-lg border text-xs font-semibold ${isActive ? 'border-amber-200 text-amber-700 hover:bg-amber-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'} transition">
+                  ${isActive ? '停用撤回' : '重新啟用'}
+                </button>
+                <button onclick="deleteNotif('${item.id}')" class="p-1 text-slate-400 hover:text-red-600 rounded transition" title="刪除此紀錄">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      refreshIcons();
+    }
+
+    async function handleSendBroadcast() {
+      const titleInput = document.getElementById('notifTitleInput');
+      const bodyInput = document.getElementById('notifBodyInput');
+      const targetSelect = document.getElementById('notifTargetSelect');
+      const targetUrlInput = document.getElementById('notifTargetUrl');
+      const prioritySelect = document.getElementById('notifPrioritySelect');
+      const sendBtn = document.getElementById('sendBroadcastBtn');
+
+      const title = (titleInput.value || '').trim();
+      const body = (bodyInput.value || '').trim();
+      const targetType = targetSelect.value || 'mall_tab';
+      const targetUrl = (targetUrlInput.value || '').trim();
+      const priority = prioritySelect.value || 'high';
+
+      if (!title) {
+        showToast('請填寫通知標題！', 'error');
+        titleInput.focus();
+        return;
+      }
+      if (!body) {
+        showToast('請填寫通知內文！', 'error');
+        bodyInput.focus();
+        return;
+      }
+      if (targetType === 'external_url' && !targetUrl) {
+        showToast('請輸入指定跳轉的外部網址！', 'error');
+        targetUrlInput.focus();
+        return;
+      }
+
+      const token = getToken();
+      if (!token) {
+        showToast('請先登入具備 repo 讀寫權限的 GitHub Token 才能發送推播！', 'error');
+        return;
+      }
+
+      if (!confirm(`確定要向所有使用者的手機發送以下推播嗎？\n\n🔔 標題：${title}\n📝 內容：${body}`)) {
+        return;
+      }
+
+      try {
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>正在廣播推播至 GitHub...</span>';
+        refreshIcons();
+
+        const newNotif = {
+          id: 'push_' + Date.now(),
+          title: title,
+          body: body,
+          target_type: targetType,
+          target_url: targetUrl,
+          priority: priority,
+          created_at: new Date().toISOString(),
+          is_active: true
+        };
+
+        if (!Array.isArray(notifData.notifications)) {
+          notifData.notifications = [];
+        }
+        notifData.notifications.unshift(newNotif);
+        notifData.last_updated = new Date().toISOString();
+
+        await saveNotificationsToGitHub(`📢 廣播推播: ${title}`);
+
+        // Reset form
+        titleInput.value = '';
+        bodyInput.value = '';
+        if (targetUrlInput) targetUrlInput.value = '';
+
+        showToast('🎉 推播通知已成功發布！使用者的手機將在連線時跳出懸浮通知！', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast(`發布失敗：${err.message}`, 'error');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i><span>立即廣播發送至所有手機</span>';
+        refreshIcons();
+      }
+    }
+
+    async function toggleNotifActive(id) {
+      const item = (notifData.notifications || []).find(n => n.id === id);
+      if (!item) return;
+      item.is_active = !item.is_active;
+      showToast(item.is_active ? '已重新啟用該通知' : '已停用撤回該通知', 'info');
+      renderNotificationsTable();
+      await saveNotificationsToGitHub(`更新推播狀態: ${item.title} (${item.is_active ? '啟用' : '停用'})`);
+    }
+
+    async function deleteNotif(id) {
+      if (!confirm('確定要永久刪除此推播紀錄嗎？')) return;
+      notifData.notifications = (notifData.notifications || []).filter(n => n.id !== id);
+      renderNotificationsTable();
+      await saveNotificationsToGitHub(`刪除推播紀錄: ${id}`);
+      showToast('已刪除推播紀錄', 'info');
+    }
+
+    async function saveNotificationsToGitHub(commitMsg) {
+      const token = getToken();
+      if (!token) throw new Error('未登入 Token');
+
+      const jsonStr = JSON.stringify(notifData, null, 2);
+      const base64Content = utf8ToBase64(jsonStr);
+
+      const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${NOTIF_FILE_PATH}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: commitMsg,
+          content: base64Content,
+          sha: notifFileSha
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || `HTTP ${res.status}`);
+      }
+
+      const resData = await res.json();
+      notifFileSha = resData.content.sha;
+      renderNotificationsTable();
+    }
+
+  </script>
   <script>
     if (!window.lucide) {
       document.write('<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"><\/script>');
     }
+  
+    // ==========================================
+    // Remote Push Notification System Logic
+    // ==========================================
+    const NOTIF_FILE_PATH = 'notifications.json';
+    let notifData = {
+      version: 1,
+      last_updated: '',
+      notifications: []
+    };
+    let notifFileSha = null;
+    let currentCmsTab = 'mall';
+
+    function switchCmsTab(tab) {
+      currentCmsTab = tab;
+      const navMall = document.getElementById('navTabMall');
+      const navPush = document.getElementById('navTabPush');
+      const viewMall = document.getElementById('tabMallView');
+      const viewPush = document.getElementById('tabPushView');
+
+      if (tab === 'mall') {
+        navMall.className = 'px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition';
+        navPush.className = 'px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+        viewMall.classList.remove('hidden');
+        viewPush.classList.add('hidden');
+      } else {
+        navPush.className = 'px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition';
+        navMall.className = 'px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+        viewMall.classList.add('hidden');
+        viewPush.classList.remove('hidden');
+        loadNotificationsFromGitHub();
+      }
+      refreshIcons();
+    }
+
+    function insertTitleEmoji(emoji) {
+      const input = document.getElementById('notifTitleInput');
+      if (input) {
+        input.value = emoji + input.value;
+        input.focus();
+      }
+    }
+
+    function handleTargetChange() {
+      const select = document.getElementById('notifTargetSelect');
+      const wrapper = document.getElementById('targetUrlWrapper');
+      if (select && wrapper) {
+        if (select.value === 'external_url') {
+          wrapper.classList.remove('hidden');
+        } else {
+          wrapper.classList.add('hidden');
+        }
+      }
+    }
+
+    async function loadNotificationsFromGitHub() {
+      try {
+        const token = getToken();
+        let res;
+        if (token) {
+          res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${NOTIF_FILE_PATH}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          });
+        }
+        
+        if (!res || !res.ok) {
+          // Public raw fallback
+          res = await fetch(`https://ray6936.github.io/paywith/${NOTIF_FILE_PATH}?t=${Date.now()}`);
+          if (!res.ok) {
+            notifData = { version: 1, last_updated: new Date().toISOString(), notifications: [] };
+            renderNotificationsTable();
+            return;
+          }
+          notifData = await res.json();
+          notifFileSha = null;
+        } else {
+          const data = await res.json();
+          notifFileSha = data.sha;
+          const jsonContent = base64ToUtf8(data.content);
+          notifData = JSON.parse(jsonContent);
+        }
+
+        if (!Array.isArray(notifData.notifications)) {
+          notifData.notifications = [];
+        }
+        renderNotificationsTable();
+      } catch (err) {
+        console.warn('載入推播通知清單：', err);
+        renderNotificationsTable();
+      }
+    }
+
+    function renderNotificationsTable() {
+      const tbody = document.getElementById('notifsTableBody');
+      const badge = document.getElementById('activeNotifBadge');
+      const statTotal = document.getElementById('statTotalNotifs');
+      const statActive = document.getElementById('statActiveNotifs');
+      
+      const list = notifData.notifications || [];
+      const activeCount = list.filter(n => n.is_active).length;
+
+      if (badge) badge.textContent = activeCount;
+      if (statTotal) statTotal.textContent = `${list.length} 則`;
+      if (statActive) statActive.textContent = `${activeCount} 則`;
+
+      if (!tbody) return;
+
+      if (list.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="py-12 text-center text-slate-400">
+              <i data-lucide="bell-off" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+              <p>目前尚無任何推播通知紀錄，快來發送第一則通知吧！</p>
+            </td>
+          </tr>
+        `;
+        refreshIcons();
+        return;
+      }
+
+      tbody.innerHTML = list.map((item, idx) => {
+        const isActive = item.is_active !== false;
+        const timeStr = item.created_at ? new Date(item.created_at).toLocaleString('zh-TW') : '剛剛';
+        const targetDesc = item.target_type === 'mall_tab' ? '🏬 即享券商城' :
+                           item.target_type === 'wallet_tab' ? '🎫 票券錢包' :
+                           item.target_type === 'external_url' ? `🌐 外部網址 (${item.target_url || ''})` : '🏠 開啟首頁';
+
+        const statusBadge = isActive 
+          ? '<span class="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>生效中</span>'
+          : '<span class="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-semibold">已停用</span>';
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition">
+            <td class="py-3.5 px-4">${statusBadge}</td>
+            <td class="py-3.5 px-4 max-w-md">
+              <div class="font-bold text-slate-900 text-sm mb-0.5">${escapeHtml(item.title)}</div>
+              <div class="text-xs text-slate-600 line-clamp-2 leading-relaxed">${escapeHtml(item.body)}</div>
+            </td>
+            <td class="py-3.5 px-4">
+              <span class="text-xs font-mono bg-slate-100 text-slate-700 px-2 py-1 rounded-lg">${targetDesc}</span>
+            </td>
+            <td class="py-3.5 px-4 text-xs text-slate-500 font-mono">${timeStr}</td>
+            <td class="py-3.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-2">
+                <button onclick="toggleNotifActive('${item.id}')" class="px-2.5 py-1 rounded-lg border text-xs font-semibold ${isActive ? 'border-amber-200 text-amber-700 hover:bg-amber-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'} transition">
+                  ${isActive ? '停用撤回' : '重新啟用'}
+                </button>
+                <button onclick="deleteNotif('${item.id}')" class="p-1 text-slate-400 hover:text-red-600 rounded transition" title="刪除此紀錄">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      refreshIcons();
+    }
+
+    async function handleSendBroadcast() {
+      const titleInput = document.getElementById('notifTitleInput');
+      const bodyInput = document.getElementById('notifBodyInput');
+      const targetSelect = document.getElementById('notifTargetSelect');
+      const targetUrlInput = document.getElementById('notifTargetUrl');
+      const prioritySelect = document.getElementById('notifPrioritySelect');
+      const sendBtn = document.getElementById('sendBroadcastBtn');
+
+      const title = (titleInput.value || '').trim();
+      const body = (bodyInput.value || '').trim();
+      const targetType = targetSelect.value || 'mall_tab';
+      const targetUrl = (targetUrlInput.value || '').trim();
+      const priority = prioritySelect.value || 'high';
+
+      if (!title) {
+        showToast('請填寫通知標題！', 'error');
+        titleInput.focus();
+        return;
+      }
+      if (!body) {
+        showToast('請填寫通知內文！', 'error');
+        bodyInput.focus();
+        return;
+      }
+      if (targetType === 'external_url' && !targetUrl) {
+        showToast('請輸入指定跳轉的外部網址！', 'error');
+        targetUrlInput.focus();
+        return;
+      }
+
+      const token = getToken();
+      if (!token) {
+        showToast('請先登入具備 repo 讀寫權限的 GitHub Token 才能發送推播！', 'error');
+        return;
+      }
+
+      if (!confirm(`確定要向所有使用者的手機發送以下推播嗎？\n\n🔔 標題：${title}\n📝 內容：${body}`)) {
+        return;
+      }
+
+      try {
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>正在廣播推播至 GitHub...</span>';
+        refreshIcons();
+
+        const newNotif = {
+          id: 'push_' + Date.now(),
+          title: title,
+          body: body,
+          target_type: targetType,
+          target_url: targetUrl,
+          priority: priority,
+          created_at: new Date().toISOString(),
+          is_active: true
+        };
+
+        if (!Array.isArray(notifData.notifications)) {
+          notifData.notifications = [];
+        }
+        notifData.notifications.unshift(newNotif);
+        notifData.last_updated = new Date().toISOString();
+
+        await saveNotificationsToGitHub(`📢 廣播推播: ${title}`);
+
+        // Reset form
+        titleInput.value = '';
+        bodyInput.value = '';
+        if (targetUrlInput) targetUrlInput.value = '';
+
+        showToast('🎉 推播通知已成功發布！使用者的手機將在連線時跳出懸浮通知！', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast(`發布失敗：${err.message}`, 'error');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i><span>立即廣播發送至所有手機</span>';
+        refreshIcons();
+      }
+    }
+
+    async function toggleNotifActive(id) {
+      const item = (notifData.notifications || []).find(n => n.id === id);
+      if (!item) return;
+      item.is_active = !item.is_active;
+      showToast(item.is_active ? '已重新啟用該通知' : '已停用撤回該通知', 'info');
+      renderNotificationsTable();
+      await saveNotificationsToGitHub(`更新推播狀態: ${item.title} (${item.is_active ? '啟用' : '停用'})`);
+    }
+
+    async function deleteNotif(id) {
+      if (!confirm('確定要永久刪除此推播紀錄嗎？')) return;
+      notifData.notifications = (notifData.notifications || []).filter(n => n.id !== id);
+      renderNotificationsTable();
+      await saveNotificationsToGitHub(`刪除推播紀錄: ${id}`);
+      showToast('已刪除推播紀錄', 'info');
+    }
+
+    async function saveNotificationsToGitHub(commitMsg) {
+      const token = getToken();
+      if (!token) throw new Error('未登入 Token');
+
+      const jsonStr = JSON.stringify(notifData, null, 2);
+      const base64Content = utf8ToBase64(jsonStr);
+
+      const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${NOTIF_FILE_PATH}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: commitMsg,
+          content: base64Content,
+          sha: notifFileSha
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || `HTTP ${res.status}`);
+      }
+
+      const resData = await res.json();
+      notifFileSha = resData.content.sha;
+      renderNotificationsTable();
+    }
+
   </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
@@ -143,6 +1013,23 @@
         </div>
       </div>
 
+      
+      <!-- CMS Navigation Tabs -->
+      <div class="flex items-center space-x-2 border-b border-slate-200">
+        <button id="navTabMall" onclick="switchCmsTab('mall')" class="px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition">
+          <i data-lucide="store" class="w-4 h-4"></i>
+          <span>即享券與動態牆管理</span>
+        </button>
+        <button id="navTabPush" onclick="switchCmsTab('push')" class="px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition">
+          <i data-lucide="bell-ring" class="w-4 h-4"></i>
+          <span>📢 遠端推播廣播管理</span>
+          <span id="activeNotifBadge" class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-bold ml-1">0</span>
+        </button>
+      </div>
+
+      <!-- Tab 1: Mall & Banners Container -->
+      <div id="tabMallView" class="space-y-8">
+
       <!-- Section 1: Hero Banners Carousel (多頁動態牆輪播管理) -->
       <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -220,6 +1107,152 @@
           </table>
         </div>
       </section>
+
+
+      </div> <!-- End of tabMallView -->
+
+      <!-- Tab 2: Push Notifications Broadcast Container -->
+      <div id="tabPushView" class="hidden space-y-8">
+        <!-- Push Stats Banner -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <i data-lucide="send" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <p class="text-xs text-slate-500 font-medium">累計發送推播</p>
+              <h3 id="statTotalNotifs" class="text-2xl font-bold text-slate-900">0 則</h3>
+            </div>
+          </div>
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <i data-lucide="radio" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <p class="text-xs text-slate-500 font-medium">目前生效中</p>
+              <h3 id="statActiveNotifs" class="text-2xl font-bold text-emerald-600">0 則</h3>
+            </div>
+          </div>
+          <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+              <i data-lucide="smartphone" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <p class="text-xs text-slate-500 font-medium">接收端 Android 手機</p>
+              <h3 class="text-base font-bold text-slate-800">全體使用者同步</h3>
+            </div>
+          </div>
+        </div>
+
+        <!-- Compose Broadcast Form Card -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                <i data-lucide="megaphone" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h2 class="font-bold text-slate-900 text-base">撰寫並發送新推播 (Compose Push)</h2>
+                <p class="text-xs text-slate-500">發送後，使用者開啟 PayWith 或背景工作執行時，手機將立即彈出系統懸浮橫幅通知</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-6 space-y-5">
+            <!-- Title -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs font-semibold text-slate-700">🔔 通知標題 (Title) *</label>
+                <div class="flex items-center gap-1.5 text-xs">
+                  <span class="text-slate-400">快速插入：</span>
+                  <button type="button" onclick="insertTitleEmoji('🔥 ')" class="hover:bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">🔥 限時</button>
+                  <button type="button" onclick="insertTitleEmoji('🎉 ')" class="hover:bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">🎉 新品</button>
+                  <button type="button" onclick="insertTitleEmoji('📢 ')" class="hover:bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">📢 公告</button>
+                  <button type="button" onclick="insertTitleEmoji('💸 ')" class="hover:bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">💸 優惠</button>
+                </div>
+              </div>
+              <input type="text" id="notifTitleInput" placeholder="例如：🔥 全家 / 7-11 即享券限時特惠中！" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none text-sm transition">
+            </div>
+
+            <!-- Body -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1.5">📝 通知內容 (Message Body) *</label>
+              <textarea id="notifBodyInput" rows="3" placeholder="例如：今天下單享專屬折扣，限量發行售完為止，點此立即前往查看最新優惠！" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none text-sm transition"></textarea>
+            </div>
+
+            <!-- Target Action & Priority Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1.5">🎯 點擊跳轉目標 (Click Action)</label>
+                <select id="notifTargetSelect" onchange="handleTargetChange()" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none text-sm bg-white transition">
+                  <option value="mall_tab">🏬 開啟「即享券商城」標籤頁（推薦）</option>
+                  <option value="wallet_tab">🎫 開啟「我的票券錢包」標籤頁</option>
+                  <option value="external_url">🌐 跳轉外部網址 (Trip.com 或指定連結)</option>
+                  <option value="home">🏠 僅開啟 App 首頁</option>
+                </select>
+              </div>
+
+              <div id="targetUrlWrapper" class="hidden">
+                <label class="block text-xs font-semibold text-slate-700 mb-1.5">🔗 指定跳轉網址 (URL)</label>
+                <input type="url" id="notifTargetUrl" placeholder="https://..." class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none text-sm transition">
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1.5">⚡ 優先級 (Priority)</label>
+                <select id="notifPrioritySelect" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-blue-600 outline-none text-sm bg-white transition">
+                  <option value="high">⚡ 高優先級（跳出頂部懸浮橫幅 + 響鈴與震動）</option>
+                  <option value="normal">📢 一般通知（狀態列常規圖示）</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+              <button id="sendBroadcastBtn" onclick="handleSendBroadcast()" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold text-sm shadow-md shadow-blue-600/25 flex items-center gap-2 transition transform active:scale-95">
+                <i data-lucide="send" class="w-4 h-4"></i>
+                <span>立即廣播發送至所有手機</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Push History Section -->
+        <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+                <i data-lucide="history" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h2 class="font-bold text-slate-900 text-base">歷史推播紀錄 (Broadcast History)</h2>
+                <p class="text-xs text-slate-500">可隨時停用（撤回）已發布的推播或刪除過期紀錄</p>
+              </div>
+            </div>
+
+            <button onclick="loadNotificationsFromGitHub()" class="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition">
+              <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
+              <span>重新整理清單</span>
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-50 text-slate-500 font-semibold text-xs border-b border-slate-200">
+                <tr>
+                  <th class="py-3 px-4">狀態</th>
+                  <th class="py-3 px-4">通知標題與內容</th>
+                  <th class="py-3 px-4">跳轉動作</th>
+                  <th class="py-3 px-4">發送時間</th>
+                  <th class="py-3 px-4 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="notifsTableBody" class="divide-y divide-slate-100">
+                <!-- Rendered by JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div> <!-- End of tabPushView -->
 
     </div>
   </main>
@@ -472,6 +1505,7 @@
         dashboardApp.classList.remove('hidden');
 
         await loadCatalogFromGitHub();
+        await loadNotificationsFromGitHub();
       } catch (err) {
         console.error(err);
         clearToken();
@@ -961,6 +1995,296 @@
     checkAuthAndLoad();
     setTimeout(refreshIcons, 100);
     setTimeout(refreshIcons, 500);
+  
+    // ==========================================
+    // Remote Push Notification System Logic
+    // ==========================================
+    const NOTIF_FILE_PATH = 'notifications.json';
+    let notifData = {
+      version: 1,
+      last_updated: '',
+      notifications: []
+    };
+    let notifFileSha = null;
+    let currentCmsTab = 'mall';
+
+    function switchCmsTab(tab) {
+      currentCmsTab = tab;
+      const navMall = document.getElementById('navTabMall');
+      const navPush = document.getElementById('navTabPush');
+      const viewMall = document.getElementById('tabMallView');
+      const viewPush = document.getElementById('tabPushView');
+
+      if (tab === 'mall') {
+        navMall.className = 'px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition';
+        navPush.className = 'px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+        viewMall.classList.remove('hidden');
+        viewPush.classList.add('hidden');
+      } else {
+        navPush.className = 'px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition';
+        navMall.className = 'px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+        viewMall.classList.add('hidden');
+        viewPush.classList.remove('hidden');
+        loadNotificationsFromGitHub();
+      }
+      refreshIcons();
+    }
+
+    function insertTitleEmoji(emoji) {
+      const input = document.getElementById('notifTitleInput');
+      if (input) {
+        input.value = emoji + input.value;
+        input.focus();
+      }
+    }
+
+    function handleTargetChange() {
+      const select = document.getElementById('notifTargetSelect');
+      const wrapper = document.getElementById('targetUrlWrapper');
+      if (select && wrapper) {
+        if (select.value === 'external_url') {
+          wrapper.classList.remove('hidden');
+        } else {
+          wrapper.classList.add('hidden');
+        }
+      }
+    }
+
+    async function loadNotificationsFromGitHub() {
+      try {
+        const token = getToken();
+        let res;
+        if (token) {
+          res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${NOTIF_FILE_PATH}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          });
+        }
+        
+        if (!res || !res.ok) {
+          // Public raw fallback
+          res = await fetch(`https://ray6936.github.io/paywith/${NOTIF_FILE_PATH}?t=${Date.now()}`);
+          if (!res.ok) {
+            notifData = { version: 1, last_updated: new Date().toISOString(), notifications: [] };
+            renderNotificationsTable();
+            return;
+          }
+          notifData = await res.json();
+          notifFileSha = null;
+        } else {
+          const data = await res.json();
+          notifFileSha = data.sha;
+          const jsonContent = base64ToUtf8(data.content);
+          notifData = JSON.parse(jsonContent);
+        }
+
+        if (!Array.isArray(notifData.notifications)) {
+          notifData.notifications = [];
+        }
+        renderNotificationsTable();
+      } catch (err) {
+        console.warn('載入推播通知清單：', err);
+        renderNotificationsTable();
+      }
+    }
+
+    function renderNotificationsTable() {
+      const tbody = document.getElementById('notifsTableBody');
+      const badge = document.getElementById('activeNotifBadge');
+      const statTotal = document.getElementById('statTotalNotifs');
+      const statActive = document.getElementById('statActiveNotifs');
+      
+      const list = notifData.notifications || [];
+      const activeCount = list.filter(n => n.is_active).length;
+
+      if (badge) badge.textContent = activeCount;
+      if (statTotal) statTotal.textContent = `${list.length} 則`;
+      if (statActive) statActive.textContent = `${activeCount} 則`;
+
+      if (!tbody) return;
+
+      if (list.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="py-12 text-center text-slate-400">
+              <i data-lucide="bell-off" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+              <p>目前尚無任何推播通知紀錄，快來發送第一則通知吧！</p>
+            </td>
+          </tr>
+        `;
+        refreshIcons();
+        return;
+      }
+
+      tbody.innerHTML = list.map((item, idx) => {
+        const isActive = item.is_active !== false;
+        const timeStr = item.created_at ? new Date(item.created_at).toLocaleString('zh-TW') : '剛剛';
+        const targetDesc = item.target_type === 'mall_tab' ? '🏬 即享券商城' :
+                           item.target_type === 'wallet_tab' ? '🎫 票券錢包' :
+                           item.target_type === 'external_url' ? `🌐 外部網址 (${item.target_url || ''})` : '🏠 開啟首頁';
+
+        const statusBadge = isActive 
+          ? '<span class="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>生效中</span>'
+          : '<span class="inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-semibold">已停用</span>';
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition">
+            <td class="py-3.5 px-4">${statusBadge}</td>
+            <td class="py-3.5 px-4 max-w-md">
+              <div class="font-bold text-slate-900 text-sm mb-0.5">${escapeHtml(item.title)}</div>
+              <div class="text-xs text-slate-600 line-clamp-2 leading-relaxed">${escapeHtml(item.body)}</div>
+            </td>
+            <td class="py-3.5 px-4">
+              <span class="text-xs font-mono bg-slate-100 text-slate-700 px-2 py-1 rounded-lg">${targetDesc}</span>
+            </td>
+            <td class="py-3.5 px-4 text-xs text-slate-500 font-mono">${timeStr}</td>
+            <td class="py-3.5 px-4 text-right">
+              <div class="flex items-center justify-end gap-2">
+                <button onclick="toggleNotifActive('${item.id}')" class="px-2.5 py-1 rounded-lg border text-xs font-semibold ${isActive ? 'border-amber-200 text-amber-700 hover:bg-amber-50' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'} transition">
+                  ${isActive ? '停用撤回' : '重新啟用'}
+                </button>
+                <button onclick="deleteNotif('${item.id}')" class="p-1 text-slate-400 hover:text-red-600 rounded transition" title="刪除此紀錄">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      refreshIcons();
+    }
+
+    async function handleSendBroadcast() {
+      const titleInput = document.getElementById('notifTitleInput');
+      const bodyInput = document.getElementById('notifBodyInput');
+      const targetSelect = document.getElementById('notifTargetSelect');
+      const targetUrlInput = document.getElementById('notifTargetUrl');
+      const prioritySelect = document.getElementById('notifPrioritySelect');
+      const sendBtn = document.getElementById('sendBroadcastBtn');
+
+      const title = (titleInput.value || '').trim();
+      const body = (bodyInput.value || '').trim();
+      const targetType = targetSelect.value || 'mall_tab';
+      const targetUrl = (targetUrlInput.value || '').trim();
+      const priority = prioritySelect.value || 'high';
+
+      if (!title) {
+        showToast('請填寫通知標題！', 'error');
+        titleInput.focus();
+        return;
+      }
+      if (!body) {
+        showToast('請填寫通知內文！', 'error');
+        bodyInput.focus();
+        return;
+      }
+      if (targetType === 'external_url' && !targetUrl) {
+        showToast('請輸入指定跳轉的外部網址！', 'error');
+        targetUrlInput.focus();
+        return;
+      }
+
+      const token = getToken();
+      if (!token) {
+        showToast('請先登入具備 repo 讀寫權限的 GitHub Token 才能發送推播！', 'error');
+        return;
+      }
+
+      if (!confirm(`確定要向所有使用者的手機發送以下推播嗎？\n\n🔔 標題：${title}\n📝 內容：${body}`)) {
+        return;
+      }
+
+      try {
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>正在廣播推播至 GitHub...</span>';
+        refreshIcons();
+
+        const newNotif = {
+          id: 'push_' + Date.now(),
+          title: title,
+          body: body,
+          target_type: targetType,
+          target_url: targetUrl,
+          priority: priority,
+          created_at: new Date().toISOString(),
+          is_active: true
+        };
+
+        if (!Array.isArray(notifData.notifications)) {
+          notifData.notifications = [];
+        }
+        notifData.notifications.unshift(newNotif);
+        notifData.last_updated = new Date().toISOString();
+
+        await saveNotificationsToGitHub(`📢 廣播推播: ${title}`);
+
+        // Reset form
+        titleInput.value = '';
+        bodyInput.value = '';
+        if (targetUrlInput) targetUrlInput.value = '';
+
+        showToast('🎉 推播通知已成功發布！使用者的手機將在連線時跳出懸浮通知！', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast(`發布失敗：${err.message}`, 'error');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i><span>立即廣播發送至所有手機</span>';
+        refreshIcons();
+      }
+    }
+
+    async function toggleNotifActive(id) {
+      const item = (notifData.notifications || []).find(n => n.id === id);
+      if (!item) return;
+      item.is_active = !item.is_active;
+      showToast(item.is_active ? '已重新啟用該通知' : '已停用撤回該通知', 'info');
+      renderNotificationsTable();
+      await saveNotificationsToGitHub(`更新推播狀態: ${item.title} (${item.is_active ? '啟用' : '停用'})`);
+    }
+
+    async function deleteNotif(id) {
+      if (!confirm('確定要永久刪除此推播紀錄嗎？')) return;
+      notifData.notifications = (notifData.notifications || []).filter(n => n.id !== id);
+      renderNotificationsTable();
+      await saveNotificationsToGitHub(`刪除推播紀錄: ${id}`);
+      showToast('已刪除推播紀錄', 'info');
+    }
+
+    async function saveNotificationsToGitHub(commitMsg) {
+      const token = getToken();
+      if (!token) throw new Error('未登入 Token');
+
+      const jsonStr = JSON.stringify(notifData, null, 2);
+      const base64Content = utf8ToBase64(jsonStr);
+
+      const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${NOTIF_FILE_PATH}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: commitMsg,
+          content: base64Content,
+          sha: notifFileSha
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || `HTTP ${res.status}`);
+      }
+
+      const resData = await res.json();
+      notifFileSha = resData.content.sha;
+      renderNotificationsTable();
+    }
+
   </script>
 </body>
 </html>

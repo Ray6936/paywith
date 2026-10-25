@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "last_updated": "2026-10-25T18:00:00Z",
+  "notifications": [
+    {
+      "id": "push_init_001",
+      "title": "🎉 歡迎使用 PayWith 即享券商城！",
+      "body": "全家、7-11、家樂福等各大品牌即享券已上架，點此查看最新專屬優惠！",
+      "target_type": "mall_tab",
+      "target_url": "",
+      "priority": "high",
+      "created_at": "2026-10-25T18:00:00Z",
+      "is_active": true
+    }
+  ]
+}

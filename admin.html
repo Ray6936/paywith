@@ -546,6 +546,16 @@
       }).join(''));
     }
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     // Toast helper
     function showToast(msg, type = 'success') {
       const toast = document.getElementById('toast');
@@ -607,36 +617,46 @@
       }
 
       // Verify token
+      let user;
       try {
         const userRes = await fetch('https://api.github.com/user', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!userRes.ok) throw new Error('Token 驗證失敗，請確認權限');
-        const user = await userRes.json();
-
-        headerAuthArea.innerHTML = `
-          <div class="flex items-center space-x-3">
-            <img src="${user.avatar_url}" class="w-8 h-8 rounded-full border border-slate-200">
-            <div class="text-right hidden sm:block">
-              <div class="text-xs font-bold text-slate-900">${user.login}</div>
-              <div class="text-[10px] text-emerald-600 font-medium">已授權存取</div>
-            </div>
-            <button onclick="clearToken()" title="登出" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition">
-              <i data-lucide="log-out" class="w-4 h-4"></i>
-            </button>
-          </div>
-        `;
-        lucide.createIcons();
-
-        authGate.classList.add('hidden');
-        dashboardApp.classList.remove('hidden');
-
-        await loadCatalogFromGitHub();
-        await loadNotifications();
+        if (!userRes.ok) throw new Error('Token 驗證失敗，請確認是否具備 repo 權限');
+        user = await userRes.json();
       } catch (err) {
-        console.error(err);
+        console.error('Token verification error:', err);
         clearToken();
         showToast(err.message, 'error');
+        return;
+      }
+
+      headerAuthArea.innerHTML = `
+        <div class="flex items-center space-x-3">
+          <img src="${user.avatar_url}" class="w-8 h-8 rounded-full border border-slate-200">
+          <div class="text-right hidden sm:block">
+            <div class="text-xs font-bold text-slate-900">${user.login}</div>
+            <div class="text-[10px] text-emerald-600 font-medium">已授權存取</div>
+          </div>
+          <button onclick="clearToken()" title="登出" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `;
+      lucide.createIcons();
+
+      authGate.classList.add('hidden');
+      dashboardApp.classList.remove('hidden');
+
+      try {
+        await loadCatalogFromGitHub();
+      } catch (e) {
+        console.error('loadCatalog error:', e);
+      }
+      try {
+        await loadNotifications();
+      } catch (e) {
+        console.error('loadNotifications error:', e);
       }
     }
 

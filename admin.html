@@ -40,23 +40,6 @@
         </div>
       </div>
 
-      <!-- CMS Navigation Tabs -->
-      <div class="flex items-center space-x-2 border-b border-slate-200">
-        <button id="navTabMall" onclick="switchCmsTab('mall')" class="px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition">
-          <i data-lucide="store" class="w-4 h-4"></i>
-          <span>即享券與動態牆管理</span>
-        </button>
-        <button id="navTabPush" onclick="switchCmsTab('push')" class="px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition">
-          <i data-lucide="bell-ring" class="w-4 h-4"></i>
-          <span>📢 遠端推播廣播管理</span>
-          <span id="activeNotifBadge" class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-bold ml-1">0</span>
-        </button>
-      </div>
-
-      <!-- Tab 1: Mall & Banners Container -->
-      <div id="tabMallView" class="space-y-8">
-
-
       <div class="flex items-center space-x-3" id="headerAuthArea">
         <!-- Will be filled by JS -->
       </div>
@@ -160,6 +143,22 @@
         </div>
       </div>
 
+      <!-- CMS Navigation Tabs -->
+      <div class="flex items-center space-x-2 border-b border-slate-200">
+        <button id="navTabMall" onclick="switchCmsTab('mall')" class="px-5 py-3 font-bold text-sm flex items-center gap-2 border-b-2 border-blue-600 text-blue-600 transition">
+          <i data-lucide="store" class="w-4 h-4"></i>
+          <span>即享券與動態牆管理</span>
+        </button>
+        <button id="navTabPush" onclick="switchCmsTab('push')" class="px-5 py-3 font-semibold text-sm flex items-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition">
+          <i data-lucide="bell-ring" class="w-4 h-4"></i>
+          <span>📢 遠端推播廣播管理</span>
+          <span id="activeNotifBadge" class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-bold ml-1">0</span>
+        </button>
+      </div>
+
+      <!-- Tab 1: Mall & Banners Container -->
+      <div id="tabMallView" class="space-y-8">
+
       <!-- Section 1: Hero Banners Carousel (多頁動態牆輪播管理) -->
       <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -237,11 +236,6 @@
           </table>
         </div>
       </section>
-
-    </div>
-  </main>
-
-
       </div> <!-- End of tabMallView -->
 
       <!-- Tab 2: Push Notifications Broadcast Container -->
@@ -386,6 +380,9 @@
           </div>
         </section>
       </div> <!-- End of tabPushView -->
+
+    </div>
+  </main>
 
   <!-- Product Add / Edit Modal -->
   <div id="productModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
@@ -635,6 +632,7 @@
         dashboardApp.classList.remove('hidden');
 
         await loadCatalogFromGitHub();
+        await loadNotifications();
       } catch (err) {
         console.error(err);
         clearToken();
@@ -673,7 +671,7 @@
         // Update UI
         renderBanners();
         renderCategories();
-        renderItemsTable(); loadNotifications();
+        renderItemsTable();
 
         lastUpdatedNotice.innerText = `最後更新時間：${new Date(catalogData.updatedAt || Date.now()).toLocaleString()}`;
         showToast('目錄資料載入成功！', 'success');
@@ -1047,6 +1045,7 @@
         `;
         refreshIcons();
         await loadCatalogPublic();
+        await loadNotifications();
       };
     }
 
@@ -1117,13 +1116,6 @@
     closeModalBtn.onclick = closeModal;
     cancelModalBtn.onclick = closeModal;
     refreshDataBtn.onclick = () => loadCatalogFromGitHub();
-
-    // Start
-    document.addEventListener('DOMContentLoaded', refreshIcons);
-    window.addEventListener('load', refreshIcons);
-    checkAuthAndLoad();
-    setTimeout(refreshIcons, 100);
-    setTimeout(refreshIcons, 500);
 
     // ==========================================
     // Remote Push Notification System Logic
@@ -1419,6 +1411,13 @@
       notifFileSha = resData.content.sha;
       renderNotificationsTable();
     }
+
+    // Start
+    document.addEventListener('DOMContentLoaded', refreshIcons);
+    window.addEventListener('load', refreshIcons);
+    checkAuthAndLoad();
+    setTimeout(refreshIcons, 100);
+    setTimeout(refreshIcons, 500);
   </script>
 </body>
 </html>

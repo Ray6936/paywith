@@ -1,7 +1,17 @@
 {
   "version": 1,
-  "last_updated": "2026-10-25T11:01:07.101Z",
+  "last_updated": "2026-10-25T11:05:57.227Z",
   "notifications": [
+    {
+      "id": "push_1792926357227",
+      "title": "test",
+      "body": "test",
+      "target_type": "mall_tab",
+      "target_url": "",
+      "priority": "high",
+      "created_at": "2026-10-25T11:05:57.227Z",
+      "is_active": true
+    },
     {
       "id": "push_1792926067101",
       "title": "dwqDW",

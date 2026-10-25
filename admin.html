@@ -1368,12 +1368,25 @@
 
         await saveNotificationsToGitHub(`📢 廣播推播: ${title}`);
 
+        // Instant real-time push relay (<1s latency bypasses GitHub CDN cache)
+        try {
+          await fetch('https://ntfy.sh/paywith_broadcast_ray6936_v1', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain;charset=UTF-8'
+            },
+            body: JSON.stringify(newNotif)
+          });
+        } catch (relayErr) {
+          console.warn('即時推播中繼提醒:', relayErr);
+        }
+
         // Reset form
         titleInput.value = '';
         bodyInput.value = '';
         if (targetUrlInput) targetUrlInput.value = '';
 
-        showToast('🎉 推播通知已成功發布！使用者的手機將在連線時跳出懸浮通知！', 'success');
+        showToast('🎉 推播通知已即時廣播發送！開啟 App 的手機將在 1 秒內跳出系統懸浮通知！', 'success');
       } catch (err) {
         console.error(err);
         showToast(`發布失敗：${err.message}`, 'error');
